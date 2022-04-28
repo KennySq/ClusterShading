@@ -60,6 +60,8 @@ private:
 	
 	DepthBuffer m_depth_0;
 
+	ID3D12InfoQueue* m_Info_Queue;
+	ID3D12Debug* m_Debug_Layer;
 };
 
 CREATE_APPLICATION(ClusterShading)
@@ -69,7 +71,7 @@ void ClusterShading::Startup(void)
 	USES_CONVERSION;
 	AllocConsole();
 
-	std::cout << "Engine Initialize";
+	std::cout << "Engine Initialize\n";
 
 	std::string executablePath;
 	std::string assetPath;
@@ -126,16 +128,16 @@ void ClusterShading::Startup(void)
 	g_default_shader_rs[0] = g_default_shader_cb0;
 	g_default_shader_rs.Finalize(L"Default Shader RootSignature", D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-	CD3DX12_RASTERIZER_DESC default_rasterizer = CD3DX12_RASTERIZER_DESC::CD3DX12_RASTERIZER_DESC(D3D12_FILL_MODE_SOLID, D3D12_CULL_MODE_BACK, false, 0, 0, 0, true, false, false, 1, D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF);
-	CD3DX12_BLEND_DESC default_blend = CD3DX12_BLEND_DESC::CD3DX12_BLEND_DESC();
-	CD3DX12_DEPTH_STENCIL_DESC default_depth_stencil = CD3DX12_DEPTH_STENCIL_DESC::CD3DX12_DEPTH_STENCIL_DESC();
-	g_general_pso.SetRasterizerState(default_rasterizer);
-	g_general_pso.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
-	g_general_pso.SetRenderTargetFormat(DXGI_FORMAT_R11G11B10_FLOAT, DXGI_FORMAT_UNKNOWN);
-	g_general_pso.SetRootSignature(g_default_shader_rs);
-	g_general_pso.SetBlendState(default_blend);
-	g_general_pso.SetDepthStencilState(default_depth_stencil);
-
+	CD3DX12_RASTERIZER_DESC default_rasterizer = CD3DX12_RASTERIZER_DESC::CD3DX12_RASTERIZER_DESC(CD3DX12_DEFAULT());
+	
+	CD3DX12_BLEND_DESC default_blend = CD3DX12_BLEND_DESC::CD3DX12_BLEND_DESC(CD3DX12_DEFAULT());
+	CD3DX12_DEPTH_STENCIL_DESC default_depth_stencil = CD3DX12_DEPTH_STENCIL_DESC::CD3DX12_DEPTH_STENCIL_DESC(CD3DX12_DEFAULT());// CD3DX12_DEPTH_STENCIL_DESC::CD3DX12_DEPTH_STENCIL_DESC(true, D3D12_DEPTH_WRITE_MASK_ALL, D3D12_COMPARISON_FUNC_ALWAYS, false, 0, 0, D3D12_STENCIL_OP_ZERO, D3D12_STENCIL_OP_ZERO, D3D12_STENCIL_OP_ZERO, D3D12_COMPARISON_FUNC_ALWAYS, D3D12_STENCIL_OP_ZERO, D3D12_STENCIL_OP_ZERO, D3D12_STENCIL_OP_ZERO, D3D12_COMPARISON_FUNC_ALWAYS);
+	//default_depth_stencil.DepthEnable = true;
+	//default_depth_stencil.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	//default_depth_stencil.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	//default_depth_stencil.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
+	//default_depth_stencil.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
+	//
 	D3D12_INPUT_ELEMENT_DESC default_input_elements[] =
 	{
 		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0xffffffff, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -153,6 +155,12 @@ void ClusterShading::Startup(void)
 	UINT InstanceDataStepRate;*/
 	};
 
+	g_general_pso.SetRasterizerState(default_rasterizer);
+	g_general_pso.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
+	g_general_pso.SetRenderTargetFormat(DXGI_FORMAT_R11G11B10_FLOAT, DXGI_FORMAT_D32_FLOAT);
+	g_general_pso.SetRootSignature(g_default_shader_rs);
+	g_general_pso.SetBlendState(default_blend);
+	g_general_pso.SetDepthStencilState(default_depth_stencil);
 	g_general_pso.SetInputLayout(ARRAYSIZE(default_input_elements), default_input_elements);
 	g_general_pso.SetSampleMask(0xFFFFFFFF);
 	g_general_pso.Finalize();
@@ -169,7 +177,7 @@ void ClusterShading::Startup(void)
 
 	XMMATRIX view, projection;
 
-	view = XMMatrixLookAtLH(XMVectorSet(0.0f, 0.0f, -1.0f, 1.0f), XMVectorSet(0.0f, 0.0f, 0.0, 1.0f), XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f));
+	view = XMMatrixLookAtLH(XMVectorSet(0.0f, 5.0f, -1.0f, 1.0f), XMVectorSet(0.0f, 5.0f, 0.0, 1.0f), XMVectorSet(0.0f, 1.0f, 0.0f, 1.0f));
 	projection = XMMatrixPerspectiveFovLH(XMConvertToRadians(75.0f), 1.777f, 0.001f, 10000.0f);
 
 	D3D12_RANGE constant_buffer_map_range{};
@@ -219,6 +227,22 @@ void ClusterShading::Startup(void)
 	g_SponzaIb->Map(0, &ib_map_range, &sponza_ib_map_ptr);
 	memcpy(sponza_ib_map_ptr, sponzaLoader.Indices.data(), g_SponzaIb_Size);
 	g_SponzaIb->Unmap(0, &ib_map_range);
+
+	HRESULT result = D3D12GetDebugInterface(__uuidof(ID3D12Debug), (void**)&m_Debug_Layer);
+	if (result != S_OK)
+	{
+		std::cout << "Failed to get debug interface\n";
+	}
+	g_Device->QueryInterface<ID3D12InfoQueue>(&m_Info_Queue);
+	if (m_Info_Queue == nullptr)
+	{
+		std::cout << "Failed to Query ID3D12InfoQueue\n";
+	}
+
+	Graphics::ResizeDisplayDependentBuffers(1280, 720);
+
+	g_SceneColorBuffer->SetName(L"RenderBuffer");
+	g_SceneDepthBuffer->SetName(L"DepthBuffer");
 }
 
 void ClusterShading::Cleanup(void)
@@ -229,26 +253,32 @@ void ClusterShading::Cleanup(void)
 void ClusterShading::Update(float /*deltaT*/)
 {
 	ScopedTimer _prof(L"Update State");
-
+	
+	
 	// Update something
 }
 
 void ClusterShading::RenderScene(void)
 {
 	GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Render");
+	Color clearColor;
+	clearColor.SetRGB(0.0f, 1.0f, 0.0f);
+	g_SceneColorBuffer.SetClearColor(clearColor);
+	gfxContext.FlushResourceBarriers();
 
-	gfxContext.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
-	gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, true);
+	gfxContext.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+	gfxContext.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV());
+	gfxContext.SetViewportAndScissor(0, 0, g_SceneColorBuffer.GetWidth(), g_SceneColorBuffer.GetHeight());
+
 	gfxContext.ClearColor(g_SceneColorBuffer);
 	gfxContext.ClearDepth(g_SceneDepthBuffer);
 
-	gfxContext.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV());
-	gfxContext.SetViewportAndScissor(0, 0, g_SceneColorBuffer.GetWidth(), g_SceneColorBuffer.GetHeight());
 
 	D3D12_GPU_VIRTUAL_ADDRESS vb_virtual_address = g_SponzaVb->GetGPUVirtualAddress();
 	D3D12_GPU_VIRTUAL_ADDRESS ib_virtual_address = g_SponzaIb->GetGPUVirtualAddress();
 	D3D12_GPU_VIRTUAL_ADDRESS constant_buffer_virtual_address0 = m_constant_buffer_0->GetGPUVirtualAddress();
-
+		
 	D3D12_VERTEX_BUFFER_VIEW sponza_vbv{ vb_virtual_address,  g_SponzaVb_Size, sizeof(Vertex) };
 	D3D12_INDEX_BUFFER_VIEW sponza_ibv{ ib_virtual_address,  g_SponzaIb_Size, DXGI_FORMAT_R32_UINT };
 
@@ -259,9 +289,19 @@ void ClusterShading::RenderScene(void)
 	gfxContext.SetRootSignature(g_default_shader_rs);
 	gfxContext.SetConstantBuffer(0, constant_buffer_virtual_address0);
 	gfxContext.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
+	
 	gfxContext.DrawIndexed(m_sponza_index_count, 0, 0);
-	   // Rendering something
 
+	//size_t message_count = m_Info_Queue->GetNumStoredMessages();
+	//D3D12_MESSAGE message;
+	//size_t message_size;
+
+	//HRESULT result = m_Info_Queue->GetMessageW(message_count - 1, &message, &message_size);
+	//if (result != S_OK)
+	//{
+	//	std::cout << "Something went wrong.\n";
+	//}
+	// Rendering something
+	
 	gfxContext.Finish();
 }
